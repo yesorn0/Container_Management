@@ -83,20 +83,12 @@ QMenuBar {
          <property name="title">
           <string>SENSOR</string>
          </property>
-         <layout class="QHBoxLayout" name="horizontalLayout_2">
+         <layout class="QHBoxLayout" name="horizontalLayout_2" stretch="1,1">
           <item>
-           <widget class="QLabel" name="chart_1">
-            <property name="text">
-             <string>TextLabel</string>
-            </property>
-           </widget>
+           <widget class="QWidget" name="chart_1" native="true"/>
           </item>
           <item>
-           <widget class="QLabel" name="chart_2">
-            <property name="text">
-             <string>TextLabel</string>
-            </property>
-           </widget>
+           <widget class="QWidget" name="chart_2" native="true"/>
           </item>
          </layout>
         </widget>
@@ -204,11 +196,7 @@ QMenuBar {
          </property>
          <layout class="QVBoxLayout" name="verticalLayout_4">
           <item>
-           <widget class="QLabel" name="incline_img">
-            <property name="text">
-             <string>TextLabel</string>
-            </property>
-           </widget>
+           <widget class="QWidget" name="bar_chart" native="true"/>
           </item>
          </layout>
         </widget>
