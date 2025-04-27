@@ -184,7 +184,7 @@ QMenuBar {
          <property name="sizeHint" stdset="0">
           <size>
            <width>20</width>
-           <height>200</height>
+           <height>160</height>
           </size>
          </property>
         </spacer>

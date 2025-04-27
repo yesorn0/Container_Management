@@ -143,7 +143,7 @@ class Ui_MainWindow(object):
         self.humi_edit.setStretch(0, 3)
         self.humi_edit.setStretch(1, 1)
         self.verticalLayout_3.addLayout(self.humi_edit)
-        spacerItem1 = QtWidgets.QSpacerItem(20, 200, QtWidgets.QSizePolicy.Minimum, QtWidgets.QSizePolicy.Expanding)
+        spacerItem1 = QtWidgets.QSpacerItem(20, 160, QtWidgets.QSizePolicy.Minimum, QtWidgets.QSizePolicy.Expanding)
         self.verticalLayout_3.addItem(spacerItem1)
         self.ship_incline = QtWidgets.QGroupBox(self.right_side)
         self.ship_incline.setObjectName("ship_incline")

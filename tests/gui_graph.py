@@ -1,7 +1,6 @@
 import sys
 import random
 from gui.control_ui import Ui_MainWindow
-from logic.serial_bt import bt_thread_start, return_receDATA
 
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QWidget, QLabel, QGridLayout, QVBoxLayout, QLineEdit, QTextEdit
@@ -33,9 +32,6 @@ class Main(QMainWindow):
 
         # --- cmd_log를 읽기 전용으로 설정 ---
         self.ui.cmd_log.setReadOnly(True)
-        
-        # Bluetooth 수신 스레드 시작
-        bt_thread_start()
         
         # --- 그래프 만들기 (왼쪽: matplotlib / 오른쪽: pyqtgraph) ---
         self.setup_graphs()
@@ -76,18 +72,16 @@ class Main(QMainWindow):
         layout2.addWidget(self.pg_plot)
 
     def update_graphs(self):
-        # --- 블루투스 수신 데이터 가져오기 ---
-        rece_data = return_receDATA()
-        if rece_data is None or any(v is None for v in rece_data):
-            return  # 아직 데이터가 안 왔으면 skip
+        # --- 새로운 센서 데이터 생성 (임의) ---
+        new_temp1 = random.uniform(20, 30)
+        new_humi1 = random.uniform(40, 60)
+        new_temp2 = random.uniform(20, 30)
+        new_humi2 = random.uniform(40, 60)
 
-        T1, H1, T2, H2, F, LW, RW = rece_data
-    
-        # 데이터 추가
-        self.temp1_data.append(T1)
-        self.humi1_data.append(H1)
-        self.temp2_data.append(T2)
-        self.humi2_data.append(H2)
+        self.temp1_data.append(new_temp1)
+        self.humi1_data.append(new_humi1)
+        self.temp2_data.append(new_temp2)
+        self.humi2_data.append(new_humi2)
         
         # 30개까지만 유지
         if len(self.temp1_data) > 30: self.temp1_data.pop(0)
