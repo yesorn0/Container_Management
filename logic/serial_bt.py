@@ -23,15 +23,15 @@ def return_receDATA():
 
 
 # 송신 스레드
-def send_thread():
-    while True:
-        try:
-            ser.write(b"abcdefghijklmnopqrst")
-            time.sleep(2)
+# def send_thread():
+#     while True:
+#         try:
+#             ser.write(b"abcdefghijklmnopqrst")
+#             time.sleep(2)
 
-        except serial.SerialException:
-            print("송신 중 에러 발생")
-            break
+#         except serial.SerialException:
+#             print("송신 중 에러 발생")
+#             break
 
 # 수신 스레드
 def receive_thread():
@@ -56,8 +56,8 @@ def receive_thread():
             break
 
 def bt_thread_start():
-    send = threading.Thread(target=send_thread)
-    send.start()
+    # send = threading.Thread(target=send_thread)
+    # send.start()
     recv = threading.Thread(target=receive_thread)
     recv.start()
 

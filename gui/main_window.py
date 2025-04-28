@@ -2,6 +2,7 @@ import sys
 import random
 from gui.control_ui import Ui_MainWindow
 from logic.serial_bt import bt_thread_start, return_receDATA
+from logic.serial_bt import ser
 
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QWidget, QLabel, QGridLayout, QVBoxLayout, QLineEdit, QTextEdit
@@ -21,15 +22,20 @@ class Main(QMainWindow):
         self.ui.setupUi(self)
         
         # --- 멤버 변수 초기화 ---
-        self.temp_thresh = []
-        self.humi_thresh = []
-        self.cmd = ' '
+        self.box_select = 1
+        self.temp_thresh = [0, 0]
+        self.humi_thresh = [0, 0]
         
         # --- 데이터 버퍼 초기화 ---
         self.temp1_data = []
         self.humi1_data = []
         self.temp2_data = []
         self.humi2_data = []
+        
+        # --- cmd 관련 변수 초기화 ---
+        self.cmd = ' '
+        self.warning_counter = 0
+        self.warning_interval = 6
 
         # --- cmd_log를 읽기 전용으로 설정 ---
         self.ui.cmd_log.setReadOnly(True)
@@ -43,6 +49,10 @@ class Main(QMainWindow):
         # bar chart 만들기
         self.setup_bar_chart()
         
+        # --- ComboBox 설정 ---
+        self.ui.box_select.addItems(["Container 1", "Container 2"])
+        self.ui.box_select.currentIndexChanged.connect(self.change_box_selection)
+        
         # --- Temp, Humi 경계값 버튼 연결 ---
         self.ui.btn_temp.clicked.connect(self.send_temp_value)
         self.ui.btn_humi.clicked.connect(self.send_humi_value)
@@ -50,10 +60,10 @@ class Main(QMainWindow):
         # --- Command Line 엔터 입력 연결 ---
         self.ui.cmd_line.returnPressed.connect(self.send_command)
 
-        # --- 그래프 갱신용 타이머 ---
+        # --- GUI 갱신용 타이머 ---
         self.timer = QTimer()
-        self.timer.timeout.connect(self.update_graphs)
-        self.timer.start(1000)  # 1초마다 갱신
+        self.timer.timeout.connect(self.update_status)
+        self.timer.start(500)  # 1초마다 갱신
 
     def setup_graphs(self):
         # QWidget 안에 matplotlib 추가
@@ -75,7 +85,7 @@ class Main(QMainWindow):
         layout2.setContentsMargins(0, 0, 0, 0)
         layout2.addWidget(self.pg_plot)
 
-    def update_graphs(self):
+    def update_status(self):
         # --- 블루투스 수신 데이터 가져오기 ---
         rece_data = return_receDATA()
         if rece_data is None or any(v is None for v in rece_data):
@@ -111,21 +121,33 @@ class Main(QMainWindow):
         self.pg_plot.plot(x, self.humi2_data, pen='b', name='Humi2')
         
         # -- bar chart 그래프 업데이트 ---
-        left = random.uniform(0, 100)    # -50도 ~ 50도
-        right = random.uniform(0, 100)
+        self.update_bar_chart(LW, RW)
+        
+        # --- 수위 차이 감지 및 홰재 감지 경고 ---
+        self.check_status(LW, RW, F)
 
-        self.update_bar_chart(left, right)
+    def change_box_selection(self, index):
+        self.box_select = index + 1
+        # 선택된 box에 맞는 temp/humi 값을 LineEdit에 표시
+        self.ui.line_temp.setText(str(self.temp_thresh[self.box_select-1]))
+        self.ui.line_humi.setText(str(self.humi_thresh[self.box_select-1]))
 
-    def send_temp_value(self, idx):
+    def send_temp_value(self):
         # Temp 전송 버튼 클릭 시 로그 기록
-        self.temp_thresh[idx] = self.ui.line_temp.text()
-        self.append_log(f"[TEMP] {self.temp_thresh[idx]} 전송 완료")
+        self.temp_thresh[self.box_select-1] = int(self.ui.line_temp.text())
+        self.append_log(f"[TEMP container {self.box_select}] {self.temp_thresh[self.box_select-1]} 전송 완료")
+         # Bluetooth로 temp 값을 전송
+        send_str = f"T{self.box_select}:{self.temp_thresh[self.box_select-1]:02d}\n"
+        ser.write(send_str.encode())
 
     def send_humi_value(self):
         # Humi 전송 버튼 클릭 시 로그 기록
-        self.humi_value = self.ui.line_humi.text()
-        self.append_log(f"[HUMI] {self.humi_value} 전송 완료")
-
+        self.humi_thresh[self.box_select-1] = int(self.ui.line_humi.text())
+        self.append_log(f"[HUMI container {self.box_select}] {self.humi_thresh[self.box_select-1]} 전송 완료")
+        # ✅ Bluetooth로 humi 값도 전송
+        send_str = f"H{self.box_select}:{self.humi_thresh[self.box_select-1]:02d}\n"
+        ser.write(send_str.encode())
+        
     def send_command(self):
         # Command 입력 후 Enter 시 로그 기록
         self.cmd = self.ui.cmd_line.text()
@@ -135,9 +157,19 @@ class Main(QMainWindow):
 
     def append_log(self, text):
         # 로그창에 텍스트 추가 및 스크롤 최하단 이동
-        current_log = self.ui.cmd_log.toPlainText()
-        updated_log = current_log + text + "\n"
-        self.ui.cmd_log.setPlainText(updated_log)
+        current_log = self.ui.cmd_log.toHtml()
+        
+        # 만약 'Warning' 들어있으면 빨간색
+        if '[Warning]' in text:
+            new_line = f'<span style="color:red;">{text}</span><br>'
+        elif '[Caution]' in text:
+            new_line = f'<span style="color:yellow;">{text}</span><br>'
+        else:
+            new_line = f'<span style="color:white;">{text}</span><br>'
+            
+        updated_log = current_log + new_line
+        self.ui.cmd_log.setHtml(updated_log)
+        
         self.ui.cmd_log.verticalScrollBar().setValue(self.ui.cmd_log.verticalScrollBar().maximum())
         
     def setup_bar_chart(self):
@@ -152,7 +184,7 @@ class Main(QMainWindow):
         self.bar_plot.hideButtons()
 
         # 범위 설정
-        self.bar_plot.setYRange(0, 100)
+        self.bar_plot.setYRange(0, 2500)
         self.bar_plot.setXRange(-2, 2)
 
         layout = QVBoxLayout(self.ui.bar_chart)
@@ -176,3 +208,22 @@ class Main(QMainWindow):
 
         self.bar_plot.addItem(self.bar_left)
         self.bar_plot.addItem(self.bar_right)
+    
+    def check_status(self, left_water, right_water, Fire_detect):
+        # 처음이거나, 20회마다 한 번 출력
+        self.warning_counter += 1
+        
+        if self.warning_counter == 1 or self.warning_counter >= self.warning_interval:
+            self.warning_counter = 1
+            diff = abs(left_water - right_water)
+        
+            if diff >= 1000:
+                if left_water > right_water:  self.append_log(f"[Warning] Left Side High !!!")
+                else :                        self.append_log(f"[Warning] Right Side High !!!")
+            elif diff >= 300:
+                if left_water > right_water:  self.append_log(f"[Caution] Left Side High !!!")
+                else :                        self.append_log(f"[Caution] Right Side High !!!")
+            else:
+                pass
+            
+            if Fire_detect == 1: self.append_log("[Warning] Fire Detected!")
