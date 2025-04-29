@@ -358,15 +358,21 @@ class Main(QMainWindow):
                 
     def check_and_kill_video0(self):
         try:
-            result = subprocess.check_output(['lsof', '/dev/video0']).decode('utf-8')
-            lines = result.strip().split('\n')
-            
-            for line in lines[1:]:  # 첫 줄은 헤더니까 제외
-                parts = line.split()
-                if len(parts) >= 2:
-                    pid = parts[1]
-                    print(f"기존 /dev/video0 사용 프로세스 {pid} 강제 종료")
-                    os.system(f'kill -9 {pid}')
-        except subprocess.CalledProcessError:
-            # lsof 결과가 없으면 (즉, 점유 중이 아니면) 무시
-            print("/dev/video0 점유한 프로세스 없음")
+            # /dev/video0을 잡고 있는 프로세스 찾기
+            result = subprocess.run(['fuser', '/dev/video0'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+
+            if result.stdout.strip():
+                pids = result.stdout.strip().split()
+                print(f"/dev/video0을 사용하는 프로세스 발견: {pids}")
+
+                for pid in pids:
+                    try:
+                        os.kill(int(pid), 9)
+                        print(f"프로세스 {pid} 강제 종료 성공")
+                    except Exception as e:
+                        print(f"프로세스 {pid} 종료 실패: {e}")
+            else:
+                print("/dev/video0을 점유하는 프로세스가 없습니다.")
+
+        except Exception as e:
+            print(f"check_and_kill_video0 실패: {e}")
