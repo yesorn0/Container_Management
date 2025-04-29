@@ -6,6 +6,7 @@ from gui.control_ui import Ui_MainWindow
 from gui.camera_ui import Ui_camera_widget
 from logic.serial_bt import bt_thread_start, return_receDATA
 from logic.serial_bt import ser
+from logic.csv_open import open_csv_folder
 
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QWidget, QLabel, QGridLayout, QVBoxLayout, QLineEdit, QTextEdit, QTableWidgetItem, QSizePolicy, QHeaderView
@@ -27,6 +28,9 @@ class Main(QMainWindow):
         self.ui = Ui_MainWindow()
         self.ui.setupUi(self)
         
+        # --- csv 저장 폴더 열기 ---
+        self.ui.csv_open.triggered.connect(lambda: open_csv_folder(self))
+
         # --- /dev/video0 이 이미 실행 중이면 강제 종료 ---
         self.check_and_kill_video0()
         

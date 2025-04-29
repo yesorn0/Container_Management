@@ -262,7 +262,7 @@ QMenuBar {
     <property name="title">
      <string>File</string>
     </property>
-    <addaction name="actionExel"/>
+    <addaction name="csv_open"/>
     <addaction name="actionShare"/>
     <addaction name="actionAuto_Save"/>
     <addaction name="separator"/>
@@ -316,9 +316,9 @@ QMenuBar {
     <string>Exit</string>
    </property>
   </action>
-  <action name="actionExel">
+  <action name="csv_open">
    <property name="text">
-    <string>Exel</string>
+    <string>CSV</string>
    </property>
   </action>
   <action name="actionShow_All_Commands">
