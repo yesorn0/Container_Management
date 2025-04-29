@@ -1,25 +1,34 @@
 import sys
 import random
+import subprocess
+import os
 from gui.control_ui import Ui_MainWindow
+from gui.camera_ui import Ui_camera_widget
 from logic.serial_bt import bt_thread_start, return_receDATA
 from logic.serial_bt import ser
 
 from PyQt5.QtWidgets import (
-    QApplication, QMainWindow, QWidget, QLabel, QGridLayout, QVBoxLayout, QLineEdit, QTextEdit
+    QApplication, QMainWindow, QWidget, QLabel, QGridLayout, QVBoxLayout, QLineEdit, QTextEdit, QTableWidgetItem, QSizePolicy, QHeaderView
 )
-from PyQt5.QtCore import QTimer
+from PyQt5.QtCore import QTimer, Qt, QDateTime
+from PyQt5.QtGui import QColor, QImage, QPixmap
 
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 
 import pyqtgraph as pg 
 from pyqtgraph import PlotWidget, BarGraphItem
-
+    
+import cv2
+    
 class Main(QMainWindow):
     def __init__(self):
         super().__init__()
         self.ui = Ui_MainWindow()
         self.ui.setupUi(self)
+        
+        # --- /dev/video0 이 이미 실행 중이면 강제 종료 ---
+        self.check_and_kill_video0()
         
         # --- 멤버 변수 초기화 ---
         self.box_select = 1
@@ -56,6 +65,9 @@ class Main(QMainWindow):
         # --- Temp, Humi 경계값 버튼 연결 ---
         self.ui.btn_temp.clicked.connect(self.send_temp_value)
         self.ui.btn_humi.clicked.connect(self.send_humi_value)
+        
+        # --- threshold 표 만들기 ---
+        self.setup_threshold_table()
 
         # --- Command Line 엔터 입력 연결 ---
         self.ui.cmd_line.returnPressed.connect(self.send_command)
@@ -64,6 +76,15 @@ class Main(QMainWindow):
         self.timer = QTimer()
         self.timer.timeout.connect(self.update_status)
         self.timer.start(500)  # 1초마다 갱신
+        
+        # --- Status Bar DateTime ---
+        self.setup_status_bar()
+        
+        # --- Camera Widget ---
+        self.cap = None  # 카메라 객체
+        self.camera_timer = None  # 프레임 갱신용 타이머
+        
+        self.ui.camera_view.triggered.connect(self.start_camera_view)
 
     def setup_graphs(self):
         # QWidget 안에 matplotlib 추가
@@ -111,7 +132,7 @@ class Main(QMainWindow):
         self.ax.plot(self.humi1_data, label='Humi1', color='cyan')
         self.ax.set_ylim(0, 70)
         self.ax.legend(loc='upper left')
-        self.ax.set_title('Sensor 1 Random')
+        self.ax.set_title('Container 1')
         self.canvas.draw()
 
         # --- pyqtgraph 그래프 업데이트 ---
@@ -139,6 +160,10 @@ class Main(QMainWindow):
          # Bluetooth로 temp 값을 전송
         send_str = f"T{self.box_select}:{self.temp_thresh[self.box_select-1]:02d}\n"
         ser.write(send_str.encode())
+        # 테이블 업데이트
+        item = QTableWidgetItem(str(self.temp_thresh[self.box_select-1]))
+        item.setTextAlignment(Qt.AlignCenter)
+        self.ui.threshold_table.setItem(2, (self.box_select-1)*2, item)
 
     def send_humi_value(self):
         # Humi 전송 버튼 클릭 시 로그 기록
@@ -147,6 +172,11 @@ class Main(QMainWindow):
         # ✅ Bluetooth로 humi 값도 전송
         send_str = f"H{self.box_select}:{self.humi_thresh[self.box_select-1]:02d}\n"
         ser.write(send_str.encode())
+         # 테이블 업데이트
+        item = QTableWidgetItem(str(self.humi_thresh[self.box_select-1]))
+        item.setTextAlignment(Qt.AlignCenter)
+        self.ui.threshold_table.setItem(2, (self.box_select-1)*2 + 1, item)
+
         
     def send_command(self):
         # Command 입력 후 Enter 시 로그 기록
@@ -218,12 +248,125 @@ class Main(QMainWindow):
             diff = abs(left_water - right_water)
         
             if diff >= 1000:
-                if left_water > right_water:  self.append_log(f"[Warning] Left Side High !!!")
-                else :                        self.append_log(f"[Warning] Right Side High !!!")
+                if left_water > right_water:  self.append_log(f"[Warning] Right Side HIGH !!!")
+                else :                        self.append_log(f"[Warning] Left Side High !!!")
             elif diff >= 300:
-                if left_water > right_water:  self.append_log(f"[Caution] Left Side High !!!")
-                else :                        self.append_log(f"[Caution] Right Side High !!!")
+                if left_water > right_water:  self.append_log(f"[Caution] Right Side High !!!")
+                else :                        self.append_log(f"[Caution] Left Side High !!!")
             else:
                 pass
             
             if Fire_detect == 1: self.append_log("[Warning] Fire Detected!")
+            
+    def setup_threshold_table(self):
+        # --- 테이블 기본 설정 ---
+        self.ui.threshold_table.setRowCount(3)
+        self.ui.threshold_table.setColumnCount(4)
+
+        # --- 1행 병합 (Container1 / Container2) ---
+        self.ui.threshold_table.setSpan(0, 0, 1, 2)
+        self.ui.threshold_table.setSpan(0, 2, 1, 2)
+
+        # --- 1행: Container 타이틀 ---
+        self.ui.threshold_table.setItem(0, 0, QTableWidgetItem("Container 1"))
+        self.ui.threshold_table.setItem(0, 2, QTableWidgetItem("Container 2"))
+
+        # --- 2행: Temp, Humi 타이틀 ---
+        self.ui.threshold_table.setItem(1, 0, QTableWidgetItem("Temp"))
+        self.ui.threshold_table.setItem(1, 1, QTableWidgetItem("Humi"))
+        self.ui.threshold_table.setItem(1, 2, QTableWidgetItem("Temp"))
+        self.ui.threshold_table.setItem(1, 3, QTableWidgetItem("Humi"))
+
+        # --- 3행: 실제 Threshold 값 ---
+        self.ui.threshold_table.setItem(2, 0, QTableWidgetItem(str(self.temp_thresh[0])))
+        self.ui.threshold_table.setItem(2, 1, QTableWidgetItem(str(self.humi_thresh[0])))
+        self.ui.threshold_table.setItem(2, 2, QTableWidgetItem(str(self.temp_thresh[1])))
+        self.ui.threshold_table.setItem(2, 3, QTableWidgetItem(str(self.humi_thresh[1])))
+
+        # --- 가운데 정렬 ---
+        for row in range(3):
+            for col in range(4):
+                item = self.ui.threshold_table.item(row, col)
+                if item:
+                    item.setTextAlignment(Qt.AlignCenter)
+        
+        # 0번째 행 (Container 1, Container 2) 색상 바꾸기
+        for col in range(4):
+            item = self.ui.threshold_table.item(0, col)
+            if item:
+                item.setBackground(QColor("#555555"))  # 짙은 회색 배경
+
+        # --- 크기 정책: 테이블이 GUI 크기에 맞게 커지도록 ---
+        sizePolicy = QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.ui.threshold_table.setSizePolicy(sizePolicy)
+
+        # --- 헤더 숨기기 ---
+        self.ui.threshold_table.horizontalHeader().setVisible(False)
+        self.ui.threshold_table.verticalHeader().setVisible(False)
+
+        # --- 모든 열을 Stretch (균등분할) ---
+        self.ui.threshold_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+
+        # --- 스크롤바 끄기 (깔끔하게) ---
+        self.ui.threshold_table.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.ui.threshold_table.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        
+    def setup_status_bar(self):
+        self.time_timer = QTimer()
+        self.time_timer.timeout.connect(self.update_status_bar_time)
+        self.time_timer.start(1000)  # 1초마다 갱신
+
+    def update_status_bar_time(self):
+        now = QDateTime.currentDateTime()
+        time_text = now.toString("yyyy-MM-dd hh:mm:ss")
+        self.statusBar().showMessage(time_text)
+
+    def start_camera_view(self):
+        self.cap = cv2.VideoCapture(0)
+        if not self.cap.isOpened():
+            print("카메라 열기 실패")
+            self.append_log(f"[Warning] 카메라 열기 실패")
+            return
+
+        # --- 새 창(camera_widget) 띄우기 ---
+        self.camera_window = QWidget()
+        self.camera_ui = Ui_camera_widget()
+        self.camera_ui.setupUi(self.camera_window)
+
+        self.camera_window.show() 
+
+        self.camera_timer = QTimer()
+        self.camera_timer.timeout.connect(self.update_camera_frame)
+        self.camera_timer.start(30)
+        
+    def update_camera_frame(self):
+        if self.cap is not None and self.cap.isOpened():
+            ret, frame = self.cap.read()
+            if ret:
+                frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                h, w, ch = frame.shape
+                bytes_per_line = ch * w
+                q_img = QImage(frame.data, w, h, bytes_per_line, QImage.Format_RGB888)
+                pixmap = QPixmap.fromImage(q_img)
+
+                # 여기서 camera_ui의 widget에 그림
+                self.camera_ui.camera.setScaledContents(True)
+                self.camera_ui.camera.setPixmap(pixmap)
+            else:
+                print("프레임 읽기 실패")
+                self.append_log(f"[Warning] 프레임 읽기 실패")
+                
+    def check_and_kill_video0(self):
+        try:
+            result = subprocess.check_output(['lsof', '/dev/video0']).decode('utf-8')
+            lines = result.strip().split('\n')
+            
+            for line in lines[1:]:  # 첫 줄은 헤더니까 제외
+                parts = line.split()
+                if len(parts) >= 2:
+                    pid = parts[1]
+                    print(f"기존 /dev/video0 사용 프로세스 {pid} 강제 종료")
+                    os.system(f'kill -9 {pid}')
+        except subprocess.CalledProcessError:
+            # lsof 결과가 없으면 (즉, 점유 중이 아니면) 무시
+            print("/dev/video0 점유한 프로세스 없음")

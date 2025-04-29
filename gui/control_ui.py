@@ -56,6 +56,17 @@ class Ui_MainWindow(object):
 "    padding: 0 3px 0 3px;\n"
 "}\n"
 "\n"
+"QTableWidget {\n"
+"    background-color: #2b2b2b;\n"
+"    color: #f0f0f0;\n"
+"    border: none;\n"
+"    gridline-color: #4b4b4b;\n"
+"}\n"
+"\n"
+"QTableWidget::item {\n"
+"    border: 0.1px solid #888888;\n"
+"}\n"
+"\n"
 "QMenuBar {\n"
 "    background-color: #1e1e1e;\n"
 "    color: #ffffff;\n"
@@ -146,10 +157,14 @@ class Ui_MainWindow(object):
         spacerItem1 = QtWidgets.QSpacerItem(20, 10, QtWidgets.QSizePolicy.Minimum, QtWidgets.QSizePolicy.Expanding)
         self.verticalLayout_3.addItem(spacerItem1)
         self.threshold_table = QtWidgets.QTableWidget(self.right_side)
+        self.threshold_table.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
+        self.threshold_table.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
         self.threshold_table.setRowCount(3)
         self.threshold_table.setColumnCount(4)
         self.threshold_table.setObjectName("threshold_table")
+        self.threshold_table.horizontalHeader().setCascadingSectionResizes(False)
         self.threshold_table.verticalHeader().setVisible(False)
+        self.threshold_table.verticalHeader().setCascadingSectionResizes(False)
         self.verticalLayout_3.addWidget(self.threshold_table)
         self.ship_incline = QtWidgets.QGroupBox(self.right_side)
         self.ship_incline.setObjectName("ship_incline")
@@ -203,11 +218,21 @@ class Ui_MainWindow(object):
         self.actionCheck_for_Updates.setObjectName("actionCheck_for_Updates")
         self.actionAbout = QtWidgets.QAction(MainWindow)
         self.actionAbout.setObjectName("actionAbout")
+        self.camera_on = QtWidgets.QAction(MainWindow)
+        self.camera_on.setObjectName("camera_on")
+        self.camera_off = QtWidgets.QAction(MainWindow)
+        self.camera_off.setObjectName("camera_off")
+        self.camera_view = QtWidgets.QAction(MainWindow)
+        self.camera_view.setObjectName("camera_view")
         self.menuFile.addAction(self.actionExel)
         self.menuFile.addAction(self.actionShare)
         self.menuFile.addAction(self.actionAuto_Save)
         self.menuFile.addSeparator()
         self.menuFile.addAction(self.actionExit)
+        self.menuView.addAction(self.camera_on)
+        self.menuView.addAction(self.camera_off)
+        self.menuView.addSeparator()
+        self.menuView.addAction(self.camera_view)
         self.menuHelp.addAction(self.actionShow_All_Commands)
         self.menuHelp.addAction(self.actionDocumentation)
         self.menuHelp.addAction(self.actionShow_Release_Notes)
@@ -246,3 +271,6 @@ class Ui_MainWindow(object):
         self.actionView_License.setText(_translate("MainWindow", "View License"))
         self.actionCheck_for_Updates.setText(_translate("MainWindow", "Check for Updates"))
         self.actionAbout.setText(_translate("MainWindow", "About"))
+        self.camera_on.setText(_translate("MainWindow", "Camera ON"))
+        self.camera_off.setText(_translate("MainWindow", "Camera OFF"))
+        self.camera_view.setText(_translate("MainWindow", "Camera View"))
