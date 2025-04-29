@@ -6,13 +6,12 @@ import sys
 
 if __name__ == "__main__":
     print("raspi start")
-
-    # 블루투스 송수신 스레드    
-    bt_thread_start()
-    # DB 저장 스레드
-    db_thread_start()
-
+    
     app = QApplication(sys.argv)
     window = Main()
     window.show()
+    
+    # DB 저장 스레드
+    db_thread_start()
+    
     sys.exit(app.exec_())
