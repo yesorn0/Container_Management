@@ -1,26 +1,22 @@
 import sys
 import random
-import subprocess
 import os
+
 from gui.control_ui import Ui_MainWindow
-from gui.camera_ui import Ui_camera_widget
 from logic.serial_bt import bt_thread_start, return_receDATA
 from logic.serial_bt import ser
 from logic.csv_open import open_csv_folder
+from logic.camera_manager import CameraManager, check_and_kill_video0
+from logic.log_handler import append_log as external_append_log
+from logic.status_check import check_status
+from logic.graph_manager import *
+from logic.threshold_table import setup_threshold_table
 
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QWidget, QLabel, QGridLayout, QVBoxLayout, QLineEdit, QTextEdit, QTableWidgetItem, QSizePolicy, QHeaderView
 )
 from PyQt5.QtCore import QTimer, Qt, QDateTime
 from PyQt5.QtGui import QColor, QImage, QPixmap
-
-from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
-from matplotlib.figure import Figure
-
-import pyqtgraph as pg 
-from pyqtgraph import PlotWidget, BarGraphItem
-    
-import cv2
     
 class Main(QMainWindow):
     def __init__(self):
@@ -29,15 +25,15 @@ class Main(QMainWindow):
         self.ui.setupUi(self)
         
         # --- csv 저장 폴더 열기 ---
-        self.ui.csv_open.triggered.connect(lambda: open_csv_folder(self))
+        self.ui.csv_open.triggered.connect(lambda: open_csv_folder())
 
         # --- /dev/video0 이 이미 실행 중이면 강제 종료 ---
-        self.check_and_kill_video0()
+        check_and_kill_video0()
         
         # --- 멤버 변수 초기화 ---
         self.box_select = 1
-        self.temp_thresh = [25, 20]
-        self.humi_thresh = [25, 20]
+        self.temp_thresh = [25, 25]
+        self.humi_thresh = [20, 20]
         
         # --- 데이터 버퍼 초기화 ---
         self.temp1_data = []
@@ -57,10 +53,12 @@ class Main(QMainWindow):
         bt_thread_start()
         
         # --- 그래프 만들기 (왼쪽: matplotlib / 오른쪽: pyqtgraph) ---
-        self.setup_graphs()
+        self.ax1, self.canvas1 = matplotlib_init(self.ui.chart_1)
+        self.pg_plot = pyqtgraph_init(self.ui.chart_2)
+
 
         # bar chart 만들기
-        self.setup_bar_chart()
+        self.bar_plot, self.bar_left, self.bar_right = setup_bar_chart(self.ui.bar_chart)
         
         # --- ComboBox 설정 ---
         self.ui.box_select.addItems(["Container 1", "Container 2"])
@@ -71,7 +69,7 @@ class Main(QMainWindow):
         self.ui.btn_humi.clicked.connect(self.send_humi_value)
         
         # --- threshold 표 만들기 ---
-        self.setup_threshold_table()
+        setup_threshold_table(self.ui.threshold_table, self.temp_thresh, self.humi_thresh)
 
         # --- Command Line 엔터 입력 연결 ---
         self.ui.cmd_line.returnPressed.connect(self.send_command)
@@ -85,30 +83,8 @@ class Main(QMainWindow):
         self.setup_status_bar()
         
         # --- Camera Widget ---
-        self.cap = None  # 카메라 객체
-        self.camera_timer = None  # 프레임 갱신용 타이머
-        
-        self.ui.camera_view.triggered.connect(self.start_camera_view)
-
-    def setup_graphs(self):
-        # QWidget 안에 matplotlib 추가
-        self.fig = Figure(figsize=(5,4))
-        self.canvas = FigureCanvas(self.fig)
-        self.ax = self.fig.add_subplot(111)
-
-        layout1 = QVBoxLayout(self.ui.chart_1)
-        layout1.setContentsMargins(0, 0, 0, 0)
-        layout1.addWidget(self.canvas)
-
-        # QWidget 안에 pyqtgraph 추가
-        self.pg_plot = pg.PlotWidget()
-        self.pg_plot.addLegend(offset=(10, 10))
-        self.pg_plot.showGrid(x=True, y=True, alpha=0.3)
-        self.pg_plot.setYRange(0, 70)  # y축 고정
-
-        layout2 = QVBoxLayout(self.ui.chart_2)
-        layout2.setContentsMargins(0, 0, 0, 0)
-        layout2.addWidget(self.pg_plot)
+        self.camera = CameraManager(self, log_callback=self.append_log)
+        self.ui.camera_view.triggered.connect(self.camera.start_camera_view)
 
     def update_status(self):
         # --- 블루투스 수신 데이터 가져오기 ---
@@ -131,25 +107,30 @@ class Main(QMainWindow):
         if len(self.humi2_data) > 30: self.humi2_data.pop(0)
 
         # --- matplotlib 그래프 업데이트 ---
-        self.ax.clear()
-        self.ax.plot(self.temp1_data, label='Temp1', color='orange')
-        self.ax.plot(self.humi1_data, label='Humi1', color='cyan')
-        self.ax.set_ylim(0, 70)
-        self.ax.legend(loc='upper left')
-        self.ax.set_title('Container 1')
-        self.canvas.draw()
+        matplotlib_update(self.ax1, self.canvas1, self.temp1_data, self.humi1_data, container=1)
+
 
         # --- pyqtgraph 그래프 업데이트 ---
-        self.pg_plot.clear()
-        x = list(range(len(self.temp2_data)))
-        self.pg_plot.plot(x, self.temp2_data, pen='r', name='Temp2')
-        self.pg_plot.plot(x, self.humi2_data, pen='b', name='Humi2')
-        
+        pyqtgraph_update(self.pg_plot, self.temp2_data, self.humi2_data, container=2)
+
         # -- bar chart 그래프 업데이트 ---
-        self.update_bar_chart(LW, RW)
+        self.bar_left, self.bar_right = update_bar_chart(
+            self.bar_plot,
+            self.bar_left,
+            self.bar_right,
+            left_value=LW,
+            right_value=RW
+        )
         
         # --- 수위 차이 감지 및 홰재 감지 경고 ---
-        self.check_status(LW, RW, F)
+        self.warning_counter = check_status(
+            self.ui.cmd_log,
+            left_water=LW,
+            right_water=RW,
+            fire_detect=F,
+            warning_counter=self.warning_counter,
+            warning_interval=self.warning_interval
+        )
 
     def change_box_selection(self, index):
         self.box_select = index + 1
@@ -161,7 +142,7 @@ class Main(QMainWindow):
         # Temp 전송 버튼 클릭 시 로그 기록
         self.temp_thresh[self.box_select-1] = int(self.ui.line_temp.text())
         self.append_log(f"[TEMP container {self.box_select}] {self.temp_thresh[self.box_select-1]} 전송 완료")
-         # Bluetooth로 temp 값을 전송
+        # Bluetooth로 temp 값을 전송
         send_str = f"T{self.box_select}:{self.temp_thresh[self.box_select-1]:02d}\n"
         ser.write(send_str.encode())
         # 테이블 업데이트
@@ -173,15 +154,14 @@ class Main(QMainWindow):
         # Humi 전송 버튼 클릭 시 로그 기록
         self.humi_thresh[self.box_select-1] = int(self.ui.line_humi.text())
         self.append_log(f"[HUMI container {self.box_select}] {self.humi_thresh[self.box_select-1]} 전송 완료")
-        # ✅ Bluetooth로 humi 값도 전송
+        # Bluetooth로 humi 값도 전송
         send_str = f"H{self.box_select}:{self.humi_thresh[self.box_select-1]:02d}\n"
         ser.write(send_str.encode())
-         # 테이블 업데이트
+        # 테이블 업데이트
         item = QTableWidgetItem(str(self.humi_thresh[self.box_select-1]))
         item.setTextAlignment(Qt.AlignCenter)
         self.ui.threshold_table.setItem(2, (self.box_select-1)*2 + 1, item)
 
-        
     def send_command(self):
         # Command 입력 후 Enter 시 로그 기록
         self.cmd = self.ui.cmd_line.text()
@@ -190,130 +170,7 @@ class Main(QMainWindow):
             self.ui.cmd_line.clear()
 
     def append_log(self, text):
-        # 로그창에 텍스트 추가 및 스크롤 최하단 이동
-        current_log = self.ui.cmd_log.toHtml()
-        
-        # 만약 'Warning' 들어있으면 빨간색
-        if '[Warning]' in text:
-            new_line = f'<span style="color:red;">{text}</span><br>'
-        elif '[Caution]' in text:
-            new_line = f'<span style="color:yellow;">{text}</span><br>'
-        else:
-            new_line = f'<span style="color:white;">{text}</span><br>'
-            
-        updated_log = current_log + new_line
-        self.ui.cmd_log.setHtml(updated_log)
-        
-        self.ui.cmd_log.verticalScrollBar().setValue(self.ui.cmd_log.verticalScrollBar().maximum())
-        
-    def setup_bar_chart(self):
-        self.bar_plot = PlotWidget()
-
-        # 배경 검정, 좌표계 제거
-        self.bar_plot.setBackground('black')
-        self.bar_plot.showAxis('left', False)
-        self.bar_plot.showAxis('bottom', False)
-        self.bar_plot.setMouseEnabled(x=False, y=False)
-        self.bar_plot.setMenuEnabled(False)
-        self.bar_plot.hideButtons()
-
-        # 범위 설정
-        self.bar_plot.setYRange(0, 2500)
-        self.bar_plot.setXRange(-2, 2)
-
-        layout = QVBoxLayout(self.ui.bar_chart)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.addWidget(self.bar_plot)
-
-        # Bar 초기화 (빈 채로 시작)
-        self.bar_left = None
-        self.bar_right = None
-            
-    def update_bar_chart(self, left_value, right_value):
-        # 기존 bar 제거
-        if self.bar_left:
-            self.bar_plot.removeItem(self.bar_left)
-        if self.bar_right:
-            self.bar_plot.removeItem(self.bar_right)
-
-        # 새로운 bar 추가
-        self.bar_left = BarGraphItem(x=[-1], height=[left_value], width=0.6, brush='blue')
-        self.bar_right = BarGraphItem(x=[1], height=[right_value], width=0.6, brush='red')
-
-        self.bar_plot.addItem(self.bar_left)
-        self.bar_plot.addItem(self.bar_right)
-    
-    def check_status(self, left_water, right_water, Fire_detect):
-        # 처음이거나, 20회마다 한 번 출력
-        self.warning_counter += 1
-        
-        if self.warning_counter == 1 or self.warning_counter >= self.warning_interval:
-            self.warning_counter = 1
-            diff = abs(left_water - right_water)
-        
-            if diff >= 1000:
-                if left_water > right_water:  self.append_log(f"[Warning] Right Side HIGH !!!")
-                else :                        self.append_log(f"[Warning] Left Side High !!!")
-            elif diff >= 300:
-                if left_water > right_water:  self.append_log(f"[Caution] Right Side High !!!")
-                else :                        self.append_log(f"[Caution] Left Side High !!!")
-            else:
-                pass
-            
-            if Fire_detect == 1: self.append_log("[Warning] Fire Detected!")
-            
-    def setup_threshold_table(self):
-        # --- 테이블 기본 설정 ---
-        self.ui.threshold_table.setRowCount(3)
-        self.ui.threshold_table.setColumnCount(4)
-
-        # --- 1행 병합 (Container1 / Container2) ---
-        self.ui.threshold_table.setSpan(0, 0, 1, 2)
-        self.ui.threshold_table.setSpan(0, 2, 1, 2)
-
-        # --- 1행: Container 타이틀 ---
-        self.ui.threshold_table.setItem(0, 0, QTableWidgetItem("Container 1"))
-        self.ui.threshold_table.setItem(0, 2, QTableWidgetItem("Container 2"))
-
-        # --- 2행: Temp, Humi 타이틀 ---
-        self.ui.threshold_table.setItem(1, 0, QTableWidgetItem("Temp"))
-        self.ui.threshold_table.setItem(1, 1, QTableWidgetItem("Humi"))
-        self.ui.threshold_table.setItem(1, 2, QTableWidgetItem("Temp"))
-        self.ui.threshold_table.setItem(1, 3, QTableWidgetItem("Humi"))
-
-        # --- 3행: 실제 Threshold 값 ---
-        self.ui.threshold_table.setItem(2, 0, QTableWidgetItem(str(self.temp_thresh[0])))
-        self.ui.threshold_table.setItem(2, 1, QTableWidgetItem(str(self.humi_thresh[0])))
-        self.ui.threshold_table.setItem(2, 2, QTableWidgetItem(str(self.temp_thresh[1])))
-        self.ui.threshold_table.setItem(2, 3, QTableWidgetItem(str(self.humi_thresh[1])))
-
-        # --- 가운데 정렬 ---
-        for row in range(3):
-            for col in range(4):
-                item = self.ui.threshold_table.item(row, col)
-                if item:
-                    item.setTextAlignment(Qt.AlignCenter)
-        
-        # 0번째 행 (Container 1, Container 2) 색상 바꾸기
-        for col in range(4):
-            item = self.ui.threshold_table.item(0, col)
-            if item:
-                item.setBackground(QColor("#555555"))  # 짙은 회색 배경
-
-        # --- 크기 정책: 테이블이 GUI 크기에 맞게 커지도록 ---
-        sizePolicy = QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        self.ui.threshold_table.setSizePolicy(sizePolicy)
-
-        # --- 헤더 숨기기 ---
-        self.ui.threshold_table.horizontalHeader().setVisible(False)
-        self.ui.threshold_table.verticalHeader().setVisible(False)
-
-        # --- 모든 열을 Stretch (균등분할) ---
-        self.ui.threshold_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
-
-        # --- 스크롤바 끄기 (깔끔하게) ---
-        self.ui.threshold_table.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        self.ui.threshold_table.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+            external_append_log(self.ui.cmd_log, text)    
         
     def setup_status_bar(self):
         self.time_timer = QTimer()
@@ -324,59 +181,3 @@ class Main(QMainWindow):
         now = QDateTime.currentDateTime()
         time_text = now.toString("yyyy-MM-dd hh:mm:ss")
         self.statusBar().showMessage(time_text)
-
-    def start_camera_view(self):
-        self.cap = cv2.VideoCapture(0)
-        if not self.cap.isOpened():
-            print("카메라 열기 실패")
-            self.append_log(f"[Warning] 카메라 열기 실패")
-            return
-
-        # --- 새 창(camera_widget) 띄우기 ---
-        self.camera_window = QWidget()
-        self.camera_ui = Ui_camera_widget()
-        self.camera_ui.setupUi(self.camera_window)
-
-        self.camera_window.show() 
-
-        self.camera_timer = QTimer()
-        self.camera_timer.timeout.connect(self.update_camera_frame)
-        self.camera_timer.start(30)
-        
-    def update_camera_frame(self):
-        if self.cap is not None and self.cap.isOpened():
-            ret, frame = self.cap.read()
-            if ret:
-                frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                h, w, ch = frame.shape
-                bytes_per_line = ch * w
-                q_img = QImage(frame.data, w, h, bytes_per_line, QImage.Format_RGB888)
-                pixmap = QPixmap.fromImage(q_img)
-
-                # 여기서 camera_ui의 widget에 그림
-                self.camera_ui.camera.setScaledContents(True)
-                self.camera_ui.camera.setPixmap(pixmap)
-            else:
-                print("프레임 읽기 실패")
-                self.append_log(f"[Warning] 프레임 읽기 실패")
-                
-    def check_and_kill_video0(self):
-        try:
-            # /dev/video0을 잡고 있는 프로세스 찾기
-            result = subprocess.run(['fuser', '/dev/video0'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-
-            if result.stdout.strip():
-                pids = result.stdout.strip().split()
-                print(f"/dev/video0을 사용하는 프로세스 발견: {pids}")
-
-                for pid in pids:
-                    try:
-                        os.kill(int(pid), 9)
-                        print(f"프로세스 {pid} 강제 종료 성공")
-                    except Exception as e:
-                        print(f"프로세스 {pid} 종료 실패: {e}")
-            else:
-                print("/dev/video0을 점유하는 프로세스가 없습니다.")
-
-        except Exception as e:
-            print(f"check_and_kill_video0 실패: {e}")

@@ -1,4 +1,6 @@
-def status_check(left_water, right_water, Fire_detect):
+from logic.log_handler import append_log
+
+def check_status(widget, left_water, right_water, Fire_detect, warning_counter, warning_interval):
     # 처음이거나, 20회마다 한 번 출력
     warning_counter += 1
     
@@ -16,3 +18,5 @@ def status_check(left_water, right_water, Fire_detect):
             pass
         
         if Fire_detect == 1: append_log("[Warning] Fire Detected!")
+        
+    return warning_counter

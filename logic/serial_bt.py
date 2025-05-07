@@ -17,14 +17,9 @@ F = None
 LW = None
 RW = None
 
-# 수신 데이터 리턴 함수
-def return_receDATA():
-    return [T1, H1, T2, H2, F, LW, RW]
-
 # 수신 스레드
 def receive_thread():
     global T1, H1, T2, H2, F, LW, RW
-    global ser
     while True:
         try:
             if ser.in_waiting:
@@ -44,7 +39,13 @@ def receive_thread():
             print("수신 중 에러 발생")
             break
 
+# 수신 데이터 리턴 함수
+def return_receDATA():
+    return [T1, H1, T2, H2, F, LW, RW]
+
 def bt_thread_start():
+    # send = threading.Thread(target=send_thread)
+    # send.start()
     recv = threading.Thread(target=receive_thread)
     recv.start()
 

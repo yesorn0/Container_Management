@@ -1,96 +1,55 @@
-import os
-import subprocess
 import cv2
+import subprocess
+import os
 
-from PyQt5.QtWidgets import QWidget
 from PyQt5.QtCore import QTimer
 from PyQt5.QtGui import QImage, QPixmap
+from PyQt5.QtWidgets import QWidget
 
-from gui.camera_ui import Ui_camera_widget
-from logic.log_handler import append_log
+from gui.camera_ui import Ui_camera_widget 
 
-# 전역 변수 정의
-cap = None
-camera_window = None
-camera_ui = None
-camera_timer = None
-flag = 0
+class CameraManager:
+    def __init__(self, parent, log_callback=None):
+        self.parent = parent
+        self.cap = None
+        self.camera_timer = None
+        self.camera_window = None
+        self.camera_ui = None
+        self.log_callback = log_callback 
 
-def start_camera_view(parent):
-    cap = cv2.VideoCapture(0)
-    if not cap.isOpened():
-        append_log(parent.ui.cmd_log, "[Warning] 카메라 열기 실패")
-        return
+    def start_camera_view(self):
+        self.cap = cv2.VideoCapture(0)
+        if not self.cap.isOpened():
+            print("카메라 열기 실패")
+            if self.log_callback:
+                self.log_callback("[Warning] 카메라 열기 실패")
+            return
 
-    camera_window = QWidget()
-    camera_ui = Ui_camera_widget()
-    camera_ui.setupUi(camera_window)
-    camera_window.show()
+        self.camera_window = QWidget()
+        self.camera_ui = Ui_camera_widget()
+        self.camera_ui.setupUi(self.camera_window)
+        self.camera_window.show()
 
-    def update_camera_frame():
-        if cap.isOpened():
-            ret, frame = cap.read()
+        self.camera_timer = QTimer()
+        self.camera_timer.timeout.connect(self.update_camera_frame)
+        self.camera_timer.start(30)
+
+    def update_camera_frame(self):
+        if self.cap is not None and self.cap.isOpened():
+            ret, frame = self.cap.read()
             if ret:
                 frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                 h, w, ch = frame.shape
                 bytes_per_line = ch * w
                 q_img = QImage(frame.data, w, h, bytes_per_line, QImage.Format_RGB888)
                 pixmap = QPixmap.fromImage(q_img)
-                camera_ui.camera.setPixmap(pixmap)
-                camera_ui.camera.setScaledContents(True)
+                self.camera_ui.camera.setScaledContents(True)
+                self.camera_ui.camera.setPixmap(pixmap)
             else:
-                append_log(parent.ui.cmd_log, "[Warning] 프레임 읽기 실패")
-
-    timer = QTimer()
-    timer.timeout.connect(update_camera_frame)
-    timer.start(30)
-# def start_camera_view(log_widget, parent):
-#     global cap, camera_window, camera_ui, camera_timer
-    
-#     # 기존 점유 프로세스 제거
-#     check_and_kill_video0()
-    
-#     # 비디오 캡처 객체 생성
-#     cap = cv2.VideoCapture(0)
-#     if not cap.isOpened():
-#         print("카메라 열기 실패")
-#         append_log(log_widget, f"[Warning] 카메라 열기 실패")
-#         return
-
-#     # 새 창(camera_widget) 띄우기 
-#     camera_window = QWidget()
-#     camera_ui = Ui_camera_widget()
-#     camera_ui.setupUi(camera_window)
-
-#     camera_window.show() 
-
-#     # 프레임 업데이트 타이머
-#     camera_timer = QTimer()
-#     camera_timer.timeout.connect(update_camera_frame)
-#     camera_timer.start(30)
-#     if flag == 1:
-#         append_log(log_widget, f"[Warning] 프레임 읽기 실패")
-#         flag = 0
-    
-# def update_camera_frame():
-#     global cap, camera_ui
-    
-#     if cap is not None and cap.isOpened():
-#         ret, frame = cap.read()
-#         if ret:
-#             frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-#             h, w, ch = frame.shape
-#             bytes_per_line = ch * w
-#             q_img = QImage(frame.data, w, h, bytes_per_line, QImage.Format_RGB888)
-#             pixmap = QPixmap.fromImage(q_img)
-
-#             # 여기서 camera_ui의 widget에 그림
-#             camera_ui.camera.setScaledContents(True)
-#             camera_ui.camera.setPixmap(pixmap)
-#         else:
-#             print("프레임 읽기 실패")
-#             flag = 1
-            
+                print("프레임 읽기 실패")
+                if self.log_callback:
+                    self.log_callback("[Warning] 프레임 읽기 실패")
+                    
 def check_and_kill_video0():
     try:
         # /dev/video0을 잡고 있는 프로세스 찾기
