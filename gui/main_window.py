@@ -36,8 +36,8 @@ class Main(QMainWindow):
         
         # --- 멤버 변수 초기화 ---
         self.box_select = 1
-        self.temp_thresh = [0, 0]
-        self.humi_thresh = [0, 0]
+        self.temp_thresh = [25, 20]
+        self.humi_thresh = [25, 20]
         
         # --- 데이터 버퍼 초기화 ---
         self.temp1_data = []
