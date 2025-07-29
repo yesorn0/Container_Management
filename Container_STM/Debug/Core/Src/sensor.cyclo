@@ -1,0 +1,7 @@
+../Core/Src/sensor.c:4:6:FAN_on	1
+../Core/Src/sensor.c:9:6:FAN_off	1
+../Core/Src/sensor.c:15:6:PINWHEEL_on	1
+../Core/Src/sensor.c:20:6:PINWHEEL_off	1
+../Core/Src/sensor.c:26:10:WATER_Leftcheck	1
+../Core/Src/sensor.c:31:10:WATER_Rightcheck	1
+../Core/Src/sensor.c:37:10:FIRE_check	1

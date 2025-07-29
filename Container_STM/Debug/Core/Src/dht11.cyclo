@@ -1,0 +1,5 @@
+../Core/Src/dht11.c:5:6:DHT_thres_init	1
+../Core/Src/dht11.c:14:6:DHT_parse	5
+../Core/Src/dht11.c:38:6:dht11Init	1
+../Core/Src/dht11.c:47:6:dht11GpioMode	3
+../Core/Src/dht11.c:72:9:dht11Read	18
