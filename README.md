@@ -16,7 +16,9 @@
 * 센서 정보를 Bluetooth 모듈을 통해 실시간으로 정보를 송신함
 
 `Container_GUI`  
-* 
+* 수신된 온습도 정보를 DB에 저장 및 csv 파일로 저장
+* 수신된 센서 정보를 GUI에 시각화
+* 관리자가 상황에 따라 컨테이너의 내부 온습도를 조절할 수 있도록 온습도 경계값 송신함 
 
 ## FlowChart
 <img width="662" height="471" alt="Image" src="https://github.com/user-attachments/assets/f84adbc4-ba2a-49e4-85c4-32fba5383f28" />
