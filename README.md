@@ -4,6 +4,12 @@
 
 ---
 
+## ✨ 시연영상
+
+https://www.youtube.com/watch?v=cBYhsSrshSg
+
+---
+
 ## 🔧 기술 스택
 
 <img src="https://img.shields.io/badge/C-A8B9CC?style=for-the-badge&logo=C&logoColor=white">  
@@ -52,11 +58,6 @@
 
 ---
 
-## ✨ 예시
-
-
-
----
 
 ## 📄 라이선스
 
